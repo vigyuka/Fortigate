@@ -1,7 +1,7 @@
 #!/bin/bash
 
 INPUT="backup.conf"
-OUTPUT=implementation_doc.md"
+OUTPUT="implementation_doc.md"
 
 SECTIONS=(
     "config system global"
