@@ -561,21 +561,23 @@ fortimanager-fwrule-search/
 └── policy_report.csv
 ```
 
-
-
 Ezzel a dokumentációval később újra felépíthető a teljes folyamat anélkül, hogy a Python fájlok részleteit végig kellene nézni.
 
-# Scriptek futtatási sorrendje
+---
+## Scriptek futtatási sorrendje
 
-python3 get_addresses.py
-python3 get_addrgrp.py
-python3 get_policy_packages.py
-python3 get_policies.py
-python3 get_firewall_services.py
-python3 resolve_fqdn.py
-python3 search_hosts.py
-python3 search_ip_policy.py
-python3 show_policy_report.py
+1. python3 get_addresses.py
+2. python3 get_addrgrp.py
+3. python3 get_policy_packages.py
+4. python3 get_policies.py
+5. python3 get_firewall_services.py
+6. python3 resolve_fqdn.py
+7. python3 search_hosts.py
+8. python3 search_ip_policy.py
+9. python3 show_policy_report.py
+
+---
+## Egy parancsos indítás
 
 run_policy_search.sh file tartalmazza ezt az indítási sorrendet.
 
