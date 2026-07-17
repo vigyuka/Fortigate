@@ -1,0 +1,9 @@
+{
+    "fortimanager": "https://FORTIMANAGER-IP/jsonrpc",
+    "token": "TOKEN-VALUE",
+    "adom": "ADOM-NAME",
+    "local_domains": [
+        ".valami.hu",
+        ".intranet.local"
+    ]
+}
