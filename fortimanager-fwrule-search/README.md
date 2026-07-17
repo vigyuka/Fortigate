@@ -535,7 +535,7 @@ Excelben:
 # Könyvtár struktúra ajánlott
 
 ```
-fortimanager-search/
+fortimanager-fwrule-search/
 
 ├── config.json
 
@@ -561,13 +561,11 @@ fortimanager-search/
 └── policy_report.csv
 ```
 
-```
-```
+
 
 Ezzel a dokumentációval később újra felépíthető a teljes folyamat anélkül, hogy a Python fájlok részleteit végig kellene nézni.
 
-
-Scriptek futtatási sorrendje:
+# Scriptek futtatási sorrendje
 
 python3 get_addresses.py
 python3 get_addrgrp.py
