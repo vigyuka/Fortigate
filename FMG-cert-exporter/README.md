@@ -44,7 +44,7 @@ Tested environment:
 Clone the repository:
 
 ```bash
-git clone https://github.com/example/fmg-cert-exporter.git
+git clone https://github.com/vigyuka/Fortigate/FMG-cert-exporter/fmg-cert-exporter.git
 cd fmg-cert-exporter
 ```
 
@@ -118,7 +118,7 @@ FMG_NAME__FORTIGATE_NAME__SCOPE__TYPE__CERTIFICATE_NAME.pem
 Examples:
 
 ```
-FMG_PROD__FGT-HQ__global__local-cer__GUI-BVR-Fortigate.pem
+FMG_PROD__FGT-HQ__global__local-cer__GUI-Fortigate.pem
 
 FMG_PROD__FGT-HQ__SEC__local-cer__vpn-cert.pem
 
