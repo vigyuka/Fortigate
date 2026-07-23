@@ -1,72 +1,101 @@
-# FortiManager Certificate Exporter
+# FortiManager / FortiGate Certificate Exporter
 
-`fmg_cert_all.py` is a Python-based certificate exporter for FortiManager managed FortiGate devices.
+`fmg_cert_all.py` is a Python-based certificate exporter for FortiManager and FortiGate managed devices.
 
-The script connects to FortiManager using the JSON-RPC API and uses the FortiManager JSON proxy functionality to retrieve and export certificates from managed FortiGate devices.
+The script connects to FortiManager using the JSON-RPC API and exports:
 
-The main purpose is to create a local PEM certificate repository that can be used for monitoring, certificate expiration checks, compliance checks, or backup purposes.
+* FortiManager own certificates
+* FortiGate managed device certificates
+* Global certificates
+* VDOM certificates
+
+The exported certificates are stored as PEM files and can be used for:
+
+* certificate monitoring
+* expiration checks
+* compliance validation
+* certificate inventory
+* backup purposes
+
+---
 
 ## Features
 
-* Supports multiple FortiManager ADOMs
-* Supports ADOMs without managed devices
-* Exports certificates from managed FortiGate devices
-* Supports:
+### FortiManager certificates
 
-  * Global certificates
-  * VDOM certificates
-  * Local certificates
-  * Remote CA certificates
-* Uses FortiManager `/sys/proxy/json` API functionality
-* Filters certificates:
+Exports certificates directly from FortiManager:
 
-  * Only user imported certificates (`source=user`)
-  * Avoids duplicated certificates by checking certificate scope (`range`)
-* Supports certificate ignore lists
-* Atomic PEM file writing
-* Removes obsolete exported certificates
-* Returns proper exit codes for automation and monitoring systems
+* Local certificates
+* CA certificates
+* Remote CA certificates
 
-## Requirements
+Supported API paths:
 
-* Python 3.x
-* FortiManager API access
-* FortiGate devices managed by FortiManager
-* API token with sufficient permissions
+```
+/cli/global/system/certificate/local
+/cli/global/system/certificate/ca
+/cli/global/system/certificate/remote
+```
 
-Tested environment:
+---
+
+### FortiGate managed devices
+
+Uses FortiManager JSON proxy functionality to query managed FortiGate devices.
+
+Supported certificate types:
+
+* Local certificates
+* Remote CA certificates
+
+Supported locations:
+
+* Global scope
+* VDOM scope
+
+---
+
+## Supported environment
+
+Tested with:
 
 * FortiManager 7.4.x
 * FortiGate 7.4.x
+* Python 3.x
 
-## Installation
+---
 
-Clone the repository:
+# Installation
+
+Clone repository:
 
 ```bash
-git clone https://github.com/vigyuka/Fortigate/FMG-cert-exporter/fmg-cert-exporter.git
+git clone https://github.com/example/fmg-cert-exporter.git
 cd fmg-cert-exporter
 ```
 
-Copy the script:
+Install script:
 
 ```bash
 install -m 750 fmg_cert_all.py /usr/local/bin/fmg_cert_all.py
 ```
 
-Create the configuration file:
+Create configuration:
 
 ```bash
 touch /etc/fmg.conf
 chmod 600 /etc/fmg.conf
 ```
 
-## Configuration
+---
 
-Example `/etc/fmg.conf`:
+# Configuration
+
+Example:
 
 ```ini
 [global]
+
 output_dir=/var/lib/monitoring/fmg-certs
 
 ignore_name=Fortinet_CA_SSL,Fortinet_Factory
@@ -74,151 +103,291 @@ ignore_comment=test,ignore
 
 
 [FMG_PROD]
+
 host=10.10.10.10
 token=YOUR_API_TOKEN
+adom=Production
+```
+
+Multiple FortiManager environments and ADOMs can be configured.
+
+Example:
+
+```ini
+[FMG_PROD]
+
+host=10.10.10.10
+token=TOKEN1
 adom=Production
 
 
 [FMG_TEST]
-host=fmg.example.local
-token=YOUR_API_TOKEN
+
+host=10.20.20.10
+token=TOKEN2
 adom=Test
 ```
 
-## Configuration parameters
+---
 
-### Global section
+# Configuration parameters
 
-| Parameter        | Description                                     |
-| ---------------- | ----------------------------------------------- |
-| `output_dir`     | Directory where PEM files are stored            |
-| `ignore_name`    | Comma separated certificate names to exclude    |
-| `ignore_comment` | Comma separated certificate comments to exclude |
+## Global section
 
-### FortiManager section
+| Parameter      | Description                    |
+| -------------- | ------------------------------ |
+| output_dir     | Certificate export directory   |
+| ignore_name    | Certificate names to ignore    |
+| ignore_comment | Certificate comments to ignore |
 
-| Parameter | Description                         |
-| --------- | ----------------------------------- |
-| `host`    | FortiManager hostname or IP address |
-| `token`   | FortiManager API token              |
-| `adom`    | ADOM name to process                |
+---
 
-Multiple ADOMs can be configured.
+## FortiManager section
 
-ADOMs without managed devices are skipped automatically.
+| Parameter | Description                 |
+| --------- | --------------------------- |
+| host      | FortiManager hostname or IP |
+| token     | API token                   |
+| adom      | ADOM to process             |
 
-## Output files
+---
 
-Certificates are stored using the following naming format:
+# Output format
 
-```
-FMG_NAME__FORTIGATE_NAME__SCOPE__TYPE__CERTIFICATE_NAME.pem
-```
-
-Examples:
+Certificates are stored using:
 
 ```
-FMG_PROD__FGT-HQ__global__local-cer__GUI-Fortigate.pem
+FMG__DEVICE__SCOPE__TYPE__CERTIFICATE.pem
+```
 
+The separator is `__` to avoid conflicts with certificate names.
+
+---
+
+## FortiManager certificate examples
+
+```
+FMG_PROD__FMG__global__local-cer__fmg_gui.pem
+
+FMG_PROD__FMG__global__ca__Company-Root-CA.pem
+
+FMG_PROD__FMG__global__remote-ca__Remote-CA.pem
+```
+
+---
+
+## FortiGate certificate examples
+
+Global certificate:
+
+```
+FMG_PROD__FGT-HQ__global__local-cer__vpn-cert.pem
+```
+
+VDOM certificate:
+
+```
 FMG_PROD__FGT-HQ__SEC__local-cer__vpn-cert.pem
-
-FMG_PROD__FGT-HQ__SEC__remote-ca__Company-Root-CA.pem
 ```
 
-The file separator is `__` to avoid conflicts with certificate names.
+---
 
-## Certificate filtering
+# Certificate filtering
 
-The script exports only certificates matching:
+## FortiManager
 
-### Global certificates
+FortiManager certificates are filtered by:
+
+* certificate name
+* certificate comment
+
+The script does not filter by `source` because FortiManager certificate objects do not always expose the same attributes as FortiGate certificates.
+
+---
+
+## FortiGate
+
+Only user certificates are exported:
 
 ```
 source=user
+```
+
+Factory certificates are ignored.
+
+For VDOM queries the script checks:
+
+Global:
+
+```
 range=global
 ```
 
-### VDOM certificates
+VDOM:
 
 ```
-source=user
 range=vdom
 ```
 
-This prevents exporting inherited global certificates multiple times when querying VDOM certificate lists.
+This prevents duplicated export of inherited global certificates.
 
-## Running manually
+---
 
-Test run:
+# Execution
+
+Manual run:
 
 ```bash
 python3 fmg_cert_all.py --config /etc/fmg.conf
 ```
 
-Example output:
+Example:
 
 ```
-[FMG_PROD] Processing ADOM Production
+[FMG_PROD] Processing FortiManager certificates
+
+[FMG_PROD] Exported FMG_PROD__FMG__global__ca__Company-Root.pem
+
 [FGT-HQ] Processing
-[FGT-HQ] Exported FMG_PROD__FGT-HQ__global__local-cer__certificate.pem
+
+[FGT-HQ] Exported FMG_PROD__FGT-HQ__SEC__local-cer__vpn.pem
+
 
 ========== SUMMARY ==========
+
 ADOM processed : 1
-Devices found  : 2
-Devices OK     : 2
-Certificates   : 18
+Devices found  : 5
+Devices OK     : 5
+Certificates   : 82
 Errors         : 0
+
 =============================
 
 Exit code: 0
 ```
 
-## Exit codes
+---
 
-| Code | Meaning                                |
-| ---- | -------------------------------------- |
-| `0`  | Successful execution                   |
-| `1`  | One or more errors occurred            |
-| `2`  | Configuration file could not be loaded |
+# Exit codes
 
-## Cron example
+| Code | Description                 |
+| ---- | --------------------------- |
+| 0    | Successful execution        |
+| 1    | One or more errors occurred |
+| 2    | Configuration file error    |
 
-Run the exporter every hour:
+---
+
+# Cron example
+
+Run every hour:
 
 ```cron
 0 * * * * /usr/bin/python3 /usr/local/bin/fmg_cert_all.py --config /etc/fmg.conf >> /var/log/fmg_cert_all.log 2>&1
 ```
 
-## Security considerations
+---
 
-* Protect the configuration file:
+# Cleanup behavior
+
+The script removes PEM files that no longer exist in the source system.
+
+Cleanup is separated:
+
+FortiManager:
+
+```
+FMG_NAME__FMG__*
+```
+
+FortiGate:
+
+```
+FMG_NAME__FORTIGATE_NAME__*
+```
+
+This prevents accidental deletion between certificate sources.
+
+---
+
+# Security considerations
+
+## Configuration protection
+
+The configuration file contains API tokens.
+
+Recommended permissions:
 
 ```bash
 chmod 600 /etc/fmg.conf
 ```
 
-* The script disables TLS certificate validation for API communication.
-  This is intended for internal management networks where FortiManager certificates may be self-signed.
+---
 
-* API tokens should be created with the minimum required permissions.
+## TLS verification
 
-## API usage
+The script disables TLS certificate verification for API communication.
 
-The script uses:
+This is intended for internal management networks where FortiManager certificates may be:
 
-FortiManager JSON-RPC API:
+* self-signed
+* privately issued
+* not trusted by the operating system
+
+---
+
+## API token permissions
+
+Create API tokens with the minimum required permissions.
+
+The token must allow:
+
+FortiManager:
 
 ```
-/jsonrpc
+/cli/global/system/certificate/*
 ```
 
-FortiManager proxy API:
+FortiManager proxy:
 
 ```
 /sys/proxy/json
 ```
 
-FortiGate REST API endpoints:
+FortiGate certificate access:
+
+```
+/api/v2/cmdb/vpn.certificate/*
+/api/v2/monitor/system/certificate/download
+```
+
+---
+
+# API usage
+
+The script uses:
+
+## FortiManager JSON-RPC API
+
+```
+/jsonrpc
+```
+
+## FortiManager certificate API
+
+```
+/cli/global/system/certificate/local
+/cli/global/system/certificate/ca
+/cli/global/system/certificate/remote
+```
+
+## FortiManager proxy API
+
+```
+/sys/proxy/json
+```
+
+## FortiGate REST API
 
 ```
 /api/v2/cmdb/system/vdom
@@ -230,19 +399,28 @@ FortiGate REST API endpoints:
 /api/v2/monitor/system/certificate/download
 ```
 
-## License
+---
+
+# License
 
 This project is released under the MIT License.
 
 See the `LICENSE` file for details.
 
-## Author
+---
+
+# Disclaimer
+
+This project is not an official Fortinet product.
+
+Use it at your own risk.
+
+Always test in a non-production environment before deployment.
+
+---
+
+# Author
 
 Gyorgy Virag
 vgyuri75@gmail.com
 
-## Disclaimer
-
-This script is not an official Fortinet product.
-
-Use it at your own risk and test in a non-production environment before deployment.
