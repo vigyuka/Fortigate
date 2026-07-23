@@ -14,6 +14,7 @@ from urllib.parse import quote
 import urllib.request
 
 
+
 class FortiManagerAPI(object):
 
     def __init__(self, host, token):
@@ -23,7 +24,19 @@ class FortiManagerAPI(object):
         self.context = ssl._create_unverified_context()
 
 
-    def call_payload(self, payload):
+
+    def call(self, url):
+
+        payload = {
+            "id": 1,
+            "method": "get",
+            "params": [
+                {
+                    "url": url
+                }
+            ]
+        }
+
 
         request = urllib.request.Request(
             self.url,
@@ -73,24 +86,6 @@ class FortiManagerAPI(object):
 
 
 
-    def get(self, url):
-
-        payload = {
-            "id": 1,
-            "method": "get",
-            "params": [
-                {
-                    "url": url
-                }
-            ]
-        }
-
-        return self.call_payload(
-            payload
-        )
-
-
-
     def proxy_get(
             self,
             target,
@@ -115,12 +110,48 @@ class FortiManagerAPI(object):
         }
 
 
-        result = self.call_payload(
-            payload
+        request = urllib.request.Request(
+            self.url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": "Bearer {}".format(self.token),
+                "Content-Type": "application/json"
+            }
         )
 
 
-        return result[0]["response"]
+        response = urllib.request.urlopen(
+            request,
+            context=self.context,
+            timeout=30
+        )
+
+
+        result = json.loads(
+            response.read().decode("utf-8")
+        )
+
+
+        api_result = result["result"][0]
+
+
+        status = api_result.get(
+            "status",
+            {}
+        )
+
+
+        if status.get("code", 0) != 0:
+
+            raise Exception(
+                status.get(
+                    "message",
+                    "Proxy API error"
+                )
+            )
+
+
+        return api_result["data"][0]["response"]
 
 
 
@@ -137,9 +168,7 @@ def save_pem_atomic(
 
     if not os.path.exists(directory):
 
-        os.makedirs(
-            directory
-        )
+        os.makedirs(directory)
 
 
     fd, tmpfile = tempfile.mkstemp(
@@ -241,6 +270,191 @@ def is_ignored(
 
 
 
+def export_fmg_certificates(
+        fmg,
+        fmg_name,
+        output_dir,
+        ignore_names,
+        ignore_comments,
+        stats):
+
+
+    cert_types = [
+
+        (
+            "local",
+            "local-cer",
+            "certificate"
+        ),
+
+        (
+            "ca",
+            "ca",
+            "ca"
+        ),
+
+        (
+            "remote",
+            "remote-ca",
+            "certificate"
+        )
+
+    ]
+
+
+    exported = []
+
+
+    for api_name, file_type, pem_key in cert_types:
+
+
+        try:
+
+            cert_list = fmg.call(
+                "/cli/global/system/certificate/{}".format(
+                    api_name
+                )
+            )
+
+
+        except Exception as e:
+
+
+            stats["errors"] += 1
+
+
+            print(
+                "[{}] FMG {} list error: {}".format(
+                    fmg_name,
+                    api_name,
+                    e
+                )
+            )
+
+
+            continue
+
+
+
+        for cert in cert_list:
+
+
+            if is_ignored(
+                cert,
+                ignore_names,
+                ignore_comments
+            ):
+
+                continue
+
+
+            name = cert.get(
+                "name"
+            )
+
+
+            if not name:
+
+                continue
+
+
+
+            try:
+
+
+                detail = fmg.call(
+                    "/cli/global/system/certificate/{}/{}".format(
+                        api_name,
+                        quote(name)
+                    )
+                )
+
+
+                if not detail:
+
+                    continue
+
+
+                pem = detail.get(
+                    pem_key
+                )
+
+
+                if not pem:
+
+                    continue
+
+
+                if isinstance(
+                    pem,
+                    list
+                ):
+
+                    pem = pem[0]
+
+
+                pem = pem.replace(
+                    "\\n",
+                    "\n"
+                )
+
+
+                filename = os.path.join(
+
+                    output_dir,
+
+                    "{}__FMG__global__{}__{}.pem".format(
+
+                        fmg_name,
+
+                        file_type,
+
+                        clean_filename(name)
+
+                    )
+
+                )
+
+
+                save_pem_atomic(
+                    filename,
+                    pem
+                )
+
+
+                exported.append(
+                    filename
+                )
+
+
+                stats["certificates"] += 1
+
+
+                print(
+                    "[{}] Exported {}".format(
+                        fmg_name,
+                        filename
+                    )
+                )
+
+
+            except Exception as e:
+
+
+                stats["errors"] += 1
+
+
+                print(
+                    "[{}] {} export error: {}".format(
+                        fmg_name,
+                        name,
+                        e
+                    )
+                )
+
+
+    return exported
+
 def download_certificate(
         fmg,
         target,
@@ -268,15 +482,15 @@ def download_certificate(
         )
 
 
-    result = fmg.proxy_get(
+    return fmg.proxy_get(
         target,
         url
     )
 
 
-    return result
 
-def export_certificates(
+
+def export_fortigate_certificates(
         fmg,
         target,
         fmg_name,
@@ -286,6 +500,7 @@ def export_certificates(
         scope,
         expected_range,
         cert_type,
+        api_type,
         ignore_names,
         ignore_comments,
         stats,
@@ -333,6 +548,7 @@ def export_certificates(
 
         try:
 
+
             pem = download_certificate(
                 fmg,
                 target,
@@ -344,8 +560,11 @@ def export_certificates(
 
 
             parts = [
+
                 fmg_name,
+
                 device_name
+
             ]
 
 
@@ -364,15 +583,21 @@ def export_certificates(
 
             parts.extend(
                 [
-                    cert_type,
+
+                    api_type,
+
                     clean_filename(name)
+
                 ]
             )
 
 
             filename = os.path.join(
+
                 output_dir,
+
                 "__".join(parts) + ".pem"
+
             )
 
 
@@ -405,7 +630,7 @@ def export_certificates(
 
 
             print(
-                "[{}] {} ERROR: {}".format(
+                "[{}] {} export error: {}".format(
                     device_name,
                     name,
                     e
@@ -424,17 +649,23 @@ def get_vdoms(
 
 
     result = fmg.proxy_get(
+
         target,
+
         "/api/v2/cmdb/system/vdom"
+
     )
 
 
     return [
+
         x["name"]
+
         for x in result.get(
             "results",
             []
         )
+
     ]
 
 
@@ -447,10 +678,15 @@ def cleanup_old(
 
 
     files = glob.glob(
+
         os.path.join(
+
             output_dir,
+
             prefix + "*.pem"
+
         )
+
     )
 
 
@@ -491,12 +727,21 @@ def process_device(
 
 
     target = (
+
         "adom/{}/device/{}"
+
         .format(
+
             fmg.adom,
+
             device_name
+
         )
+
     )
+
+
+    exported = []
 
 
     print(
@@ -506,165 +751,258 @@ def process_device(
     )
 
 
-    exported = []
-
-
     try:
 
 
         # GLOBAL LOCAL CERT
 
-
         local = fmg.proxy_get(
+
             target,
+
             "/api/v2/cmdb/vpn.certificate/local"
+
         )
 
 
         exported.extend(
-            export_certificates(
+
+            export_fortigate_certificates(
+
                 fmg,
+
                 target,
+
                 fmg_name,
+
                 device_name,
+
                 local.get(
                     "results",
                     []
                 ),
+
                 output_dir,
+
                 "global",
+
                 "global",
+
                 "local-cer",
+
+                "local-cer",
+
                 ignore_names,
+
                 ignore_comments,
+
                 stats
+
             )
+
         )
 
 
 
         # GLOBAL REMOTE CA
 
-
         ca = fmg.proxy_get(
+
             target,
+
             "/api/v2/cmdb/vpn.certificate/ca"
+
         )
 
 
         exported.extend(
-            export_certificates(
+
+            export_fortigate_certificates(
+
                 fmg,
+
                 target,
+
                 fmg_name,
+
                 device_name,
+
                 ca.get(
                     "results",
                     []
                 ),
+
                 output_dir,
+
                 "global",
+
                 "global",
+
                 "remote-ca",
+
+                "remote-ca",
+
                 ignore_names,
+
                 ignore_comments,
+
                 stats
+
             )
+
         )
 
 
 
-        # VDOM CERTS
+        # VDOM
 
+        for vdom in get_vdoms(
 
-        vdoms = get_vdoms(
             fmg,
+
             target
-        )
 
-
-        for vdom in vdoms:
+        ):
 
 
             local = fmg.proxy_get(
+
                 target,
+
                 "/api/v2/cmdb/vpn.certificate/local?vdom={}".format(
+
                     quote(vdom)
+
                 )
+
             )
 
 
             exported.extend(
-                export_certificates(
+
+                export_fortigate_certificates(
+
                     fmg,
+
                     target,
+
                     fmg_name,
+
                     device_name,
+
                     local.get(
                         "results",
                         []
                     ),
+
                     output_dir,
+
                     "vdom",
+
                     "vdom",
+
                     "local-cer",
+
+                    "local-cer",
+
                     ignore_names,
+
                     ignore_comments,
+
                     stats,
+
                     vdom
+
                 )
+
             )
 
 
             ca = fmg.proxy_get(
+
                 target,
+
                 "/api/v2/cmdb/vpn.certificate/ca?vdom={}".format(
+
                     quote(vdom)
+
                 )
+
             )
 
 
             exported.extend(
-                export_certificates(
+
+                export_fortigate_certificates(
+
                     fmg,
+
                     target,
+
                     fmg_name,
+
                     device_name,
+
                     ca.get(
                         "results",
                         []
                     ),
+
                     output_dir,
+
                     "vdom",
+
                     "vdom",
+
                     "remote-ca",
+
+                    "remote-ca",
+
                     ignore_names,
+
                     ignore_comments,
+
                     stats,
+
                     vdom
+
                 )
+
             )
 
 
 
         cleanup_old(
+
             "{}__{}__".format(
+
                 fmg_name,
+
                 device_name
+
             ),
+
             output_dir,
+
             exported
+
         )
 
 
         stats["devices_ok"] += 1
 
 
+
         print(
+
             "[{}] Completed {}".format(
+
                 device_name,
+
                 len(exported)
+
             )
+
         )
 
 
@@ -675,10 +1013,15 @@ def process_device(
 
 
         print(
+
             "[{}] ERROR: {}".format(
+
                 device_name,
+
                 e
+
             )
+
         )
 
 
@@ -695,26 +1038,69 @@ def process_adom(
 
 
     fmg = FortiManagerAPI(
+
         cfg["host"],
+
         cfg["token"]
+
     )
 
 
     fmg.adom = cfg["adom"]
 
 
+
     print(
-        "[{}] Processing ADOM {}".format(
-            name,
-            fmg.adom
+
+        "[{}] Processing FortiManager certificates".format(
+
+            name
+
         )
+
     )
 
 
-    devices = fmg.get(
-        "/dvmdb/adom/{}/device".format(
+    export_fmg_certificates(
+
+        fmg,
+
+        name,
+
+        output_dir,
+
+        ignore_names,
+
+        ignore_comments,
+
+        stats
+
+    )
+
+
+
+    print(
+
+        "[{}] Processing ADOM {}".format(
+
+            name,
+
             fmg.adom
+
         )
+
+    )
+
+
+
+    devices = fmg.call(
+
+        "/dvmdb/adom/{}/device".format(
+
+            fmg.adom
+
+        )
+
     )
 
 
@@ -722,10 +1108,15 @@ def process_adom(
 
 
         print(
-            "[{}] No devices".format(
+
+            "[{}] No managed devices".format(
+
                 name
+
             )
+
         )
+
 
         return
 
@@ -735,13 +1126,21 @@ def process_adom(
 
 
         process_device(
+
             fmg,
+
             name,
+
             device,
+
             output_dir,
+
             ignore_names,
+
             ignore_comments,
+
             stats
+
         )
 
 
@@ -751,6 +1150,7 @@ def print_summary(stats):
 
 
     print("")
+
     print(
         "========== SUMMARY =========="
     )
@@ -802,14 +1202,20 @@ def main():
 
 
     parser = argparse.ArgumentParser(
-        description="FortiManager certificate exporter"
+
+        description="FortiManager and FortiGate certificate exporter"
+
     )
 
 
     parser.add_argument(
+
         "--config",
+
         default="/etc/fmg.conf",
+
         help="Config file"
+
     )
 
 
@@ -822,16 +1228,21 @@ def main():
 
 
     if not config.read(
+
         args.config
+
     ):
 
 
         print(
+
             "Cannot read config"
+
         )
 
 
         return 2
+
 
 
 
@@ -848,8 +1259,11 @@ def main():
 
 
         output_dir = config["global"].get(
+
             "output_dir",
+
             output_dir
+
         )
 
 
@@ -858,8 +1272,11 @@ def main():
             x.strip()
 
             for x in config["global"].get(
+
                 "ignore_name",
+
                 ""
+
             ).split(",")
 
             if x.strip()
@@ -872,8 +1289,11 @@ def main():
             x.strip()
 
             for x in config["global"].get(
+
                 "ignore_comment",
+
                 ""
+
             ).split(",")
 
             if x.strip()
@@ -938,6 +1358,9 @@ def main():
             stats["errors"] += 1
 
 
+            exit_code = 1
+
+
             print(
 
                 "[{}] ERROR: {}".format(
@@ -951,9 +1374,6 @@ def main():
             )
 
 
-            exit_code = 1
-
-
 
 
     if stats["errors"] > 0:
@@ -963,15 +1383,21 @@ def main():
 
 
     print_summary(
+
         stats
+
     )
 
 
 
     print(
+
         "Exit code: {}".format(
+
             exit_code
+
         )
+
     )
 
 
@@ -986,5 +1412,7 @@ if __name__ == "__main__":
 
 
     sys.exit(
+
         main()
+
     )
